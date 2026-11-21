@@ -1,0 +1,39 @@
+name: 당첨번호 업데이트
+
+on:
+  schedule:
+    # 한국 시간 토요일 22:17, 일요일 09:47, 일요일 18:17 (추첨은 토요일 20:35)
+    - cron: "17 13 * * 6"
+    - cron: "47 0 * * 0"
+    - cron: "17 9 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-draws
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 새 회차 찾기
+        run: python scripts/update_draws.py
+      - name: 바뀐 데이터 저장
+        run: |
+          if git diff --quiet data/draws.json; then
+            echo "바뀐 내용 없음"
+            exit 0
+          fi
+          last=$(python -c "import json;print(json.load(open('data/draws.json'))['draws'][-1][0])")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/draws.json
+          git commit -m "당첨번호 ${last}회 반영"
+          git push

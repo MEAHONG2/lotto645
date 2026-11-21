@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#18202e">
+<meta name="description" content="역대 당첨번호로 확률을 매겨 번호를 뽑고, 용지 QR로 당첨을 확인하는 로또 6/45 앱">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="로또추첨기">
+<title>로또 6/45 번호 추첨기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one column — latest draw, controls with frequency heat grid, lottery slip A–E with history check, stats, recent picks */
+:root {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --ink: #18202e;
+  --muted: #5c6678;
+  --line: #d6dce6;
+  --accent: #1d4ed8;
+  --accent-ink: #ffffff;
+  --chip: #e4e9f2;
+  --fix: #0f766e;
+  --ex: #b91c1c;
+  --win: #b45309;
+  --b1: #f5b800; --b2: #2f7fd6; --b3: #e2483d; --b4: #7b8494; --b5: #3ea44f;
+  --f-display: "Black Han Sans", "Noto Sans KR", system-ui, sans-serif;
+  --f-body: "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141d; --surface: #182030; --ink: #e8ecf4; --muted: #98a2b5; --line: #2b3548;
+  --accent: #6b9bff; --accent-ink: #0b1220; --chip: #222c3f; --fix: #2dd4bf; --ex: #f87171; --win: #fbbf24; color-scheme: dark;
+}}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --surface: #182030; --ink: #e8ecf4; --muted: #98a2b5; --line: #2b3548;
+  --accent: #6b9bff; --accent-ink: #0b1220; --chip: #222c3f; --fix: #2dd4bf; --ex: #f87171; --win: #fbbf24; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 48px;
+}
+.wrap { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(30px, 7vw, 42px); line-height: 1.1; margin: 0; text-wrap: balance; }
+header h1 span { color: var(--accent); }
+header p { margin: 6px 0 0; color: var(--muted); }
+h2 { font-size: 15px; margin: 0; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.sub { font-size: 13px; color: var(--muted); margin: 0; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+
+.latest .balls { align-items: center; }
+.plus { color: var(--muted); font: 700 18px var(--f-num); }
+
+.seg { display: inline-flex; background: var(--chip); border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 700 14px var(--f-body); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.go { width: 100%; border: 0; background: var(--accent); color: var(--accent-ink); font: 400 22px var(--f-display); padding: 14px; border-radius: 12px; cursor: pointer; transition: transform .1s; }
+.go:active { transform: scale(.98); }
+.go:disabled { opacity: .6; cursor: wait; }
+button:focus-visible, .check input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.explain { font-size: 13px; color: var(--muted); background: var(--chip); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.explain b { color: var(--ink); }
+
+details.opts summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 14px; }
+.opts-body { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.mode { display: flex; gap: 14px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.mode b { color: var(--fix); } .mode i { color: var(--ex); font-style: normal; font-weight: 700; }
+.grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; }
+.grid button {
+  aspect-ratio: 1; max-width: 100%; border: 1px solid var(--line); color: var(--ink); padding: 0;
+  background: color-mix(in srgb, var(--accent) calc(var(--h, 0) * 55%), transparent);
+  font: 700 14px var(--f-num); border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+}
+.grid button small { font: 500 10px var(--f-num); color: var(--muted); }
+.grid button.fix { background: var(--fix); border-color: var(--fix); color: var(--surface); }
+.grid button.fix small { color: var(--surface); }
+.grid button.ex { color: var(--ex); border-color: var(--ex); text-decoration: line-through; opacity: .7; background: transparent; }
+.legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.legend i { width: 80px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 55%, transparent)); border: 1px solid var(--line); }
+.link { background: none; border: 0; color: var(--accent); font: 500 13px var(--f-body); cursor: pointer; padding: 0; }
+
+.slip { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.slip-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-bottom: 1px dashed var(--line); gap: 10px; flex-wrap: wrap; }
+.game { padding: 12px 18px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.game:last-child { border-bottom: 0; }
+.game-top { display: flex; align-items: center; gap: 12px; }
+.game .tag { font: 700 14px var(--f-num); color: var(--muted); width: 16px; flex: none; }
+.balls { display: flex; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.ball {
+  --c: var(--b4);
+  width: clamp(34px, 9vw, 44px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.55), transparent 42%), var(--c);
+  color: #fff; font: 700 clamp(14px, 3.6vw, 17px) var(--f-num); text-shadow: 0 1px 1px rgba(0,0,0,.35);
+  box-shadow: inset 0 -3px 4px rgba(0,0,0,.18);
+}
+.ball.sm { width: 34px; font-size: 14px; }
+.ball.r1 { --c: var(--b1); } .ball.r2 { --c: var(--b2); } .ball.r3 { --c: var(--b3); } .ball.r4 { --c: var(--b4); } .ball.r5 { --c: var(--b5); }
+.ball.pop { animation: pop .35s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes pop { from { transform: scale(.2) rotate(-90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.meta { font: 500 12px var(--f-num); color: var(--muted); flex: none; text-align: right; }
+.check-line { font-size: 12.5px; color: var(--muted); padding-left: 28px; }
+.check-line b { color: var(--win); }
+.copy { border: 1px solid var(--line); background: transparent; color: var(--ink); font: 500 13px var(--f-body); padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+
+.tops { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.tops > div { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.toplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.toplist li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+.bar { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); }
+
+.ck-form { display: grid; grid-template-columns: 1fr 160px auto; gap: 10px; align-items: end; }
+.ck-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ck-form input, .ck-form select {
+  width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px;
+  padding: 10px 12px; font: 500 16px var(--f-num);
+}
+.ck-form input:focus, .ck-form select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ck-go { border: 0; background: var(--ink); color: var(--surface); font: 700 15px var(--f-body); padding: 11px 16px; border-radius: 10px; cursor: pointer; }
+.ck-quick .seg button { font-family: var(--f-num); }
+.ck-err { color: var(--ex); font-size: 13px; margin: 0; }
+#ckOut { display: flex; flex-direction: column; gap: 16px; }
+#ckOut[hidden] { display: none; }
+.ck-block { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.ck-compare { display: flex; flex-direction: column; gap: 10px; }
+.ck-compare > div { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; }
+.ck-compare .balls { gap: 4px; flex-wrap: nowrap; }
+.ck-compare .ball.sm { width: clamp(26px, 7.4vw, 34px); font-size: clamp(12px, 3.2vw, 14px); }
+.ck-compare .plus { font-size: 14px; }
+.ball.dim { opacity: .28; filter: grayscale(.6); }
+.ball.bon { outline: 3px solid var(--win); outline-offset: 2px; }
+.ck-rank { margin: 0; font: 400 24px var(--f-display); }
+.ck-rank.hit { color: var(--win); }
+.ck-rank small { font: 500 14px var(--f-body); color: var(--muted); margin-left: 6px; }
+.ranks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.ranks div { background: var(--chip); border-radius: 10px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; }
+.ranks b { font: 700 18px var(--f-num); }
+.ranks span { font-size: 12px; color: var(--muted); }
+.ranks .on b { color: var(--win); }
+.tbl-wrap { overflow-x: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th, .tbl td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.tbl th { color: var(--muted); font-weight: 500; white-space: nowrap; width: 34%; }
+.tbl td .num { font-weight: 700; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 6px; background: var(--chip); color: var(--muted); }
+.pill.hi { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.pill.lo { background: color-mix(in srgb, var(--ex) 15%, transparent); color: var(--ex); }
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.qr-bar { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; }
+.qr-btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: var(--accent-ink); font: 700 15px var(--f-body); padding: 13px 10px; border-radius: 12px; cursor: pointer; text-align: center; }
+.qr-btn svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+.qr-btn.alt { background: var(--chip); color: var(--ink); }
+.vh:focus-visible + .qr-btn { outline: 3px solid var(--accent); outline-offset: 2px; }
+.qr-busy { opacity: .6; pointer-events: none; }
+#qrMsg.err { color: var(--ex); }
+#tickets { display: flex; flex-direction: column; gap: 10px; }
+#tickets:empty { display: none; }
+.ticket { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.ticket.fresh { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.t-head { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; padding: 10px 12px; background: var(--chip); }
+.t-head > div { min-width: 0; }
+.t-head .sub { display: block; }
+.t-head b { font-size: 14px; }
+.t-head .sub { font-size: 12px; }
+.t-sum { font-weight: 700; font-size: 13px; }
+.t-sum.hit { color: var(--win); }
+.t-del { background: none; border: 0; color: var(--muted); font: 500 12px var(--f-body); cursor: pointer; padding: 2px 4px; }
+.t-win { display: flex; align-items: center; gap: 4px; padding: 10px 12px 2px; flex-wrap: nowrap; }
+.t-win .sub { font-size: 12px; margin-right: 4px; white-space: nowrap; }
+.t-game { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.t-game:first-of-type { border-top: 0; }
+.t-game .tag { font: 700 13px var(--f-num); color: var(--muted); }
+.t-game .balls { gap: 4px; flex-wrap: nowrap; }
+.t-game .ball.sm, .t-win .ball.sm { width: clamp(26px, 7.4vw, 32px); font-size: clamp(12px, 3.2vw, 14px); }
+.t-res { font-size: 12.5px; color: var(--muted); text-align: right; white-space: nowrap; }
+.t-res.hit { color: var(--win); font-weight: 700; }
+.t-pending { padding: 8px 12px 10px; font-size: 13px; color: var(--muted); margin: 0; }
+@media (max-width: 560px) { .ck-form { grid-template-columns: 1fr 1fr; } .ck-form .ck-field:first-child { grid-column: 1 / -1; } }
+.hist ol { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hist li { display: flex; gap: 10px; align-items: baseline; font: 500 13px var(--f-num); color: var(--muted); flex-wrap: wrap; }
+.hist li span.n { color: var(--ink); }
+.foot { font-size: 12px; color: var(--muted); text-align: center; margin: 0; text-wrap: balance; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px; font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .ball.pop { animation: none; } .go { transition: none; } }
+@media (max-width: 460px) { .meta { display: none; } .grid { grid-template-columns: repeat(7, 1fr); } .tops { grid-template-columns: 1fr; } .check-line { padding-left: 0; } }
+
+.app-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.install { border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 700 13px var(--f-body); padding: 7px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; flex: none; }
+.scan { position: fixed; inset: 0; background: #000; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.scan[hidden] { display: none; }
+.scan video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scan-frame { position: relative; width: min(72vw, 72vh, 340px); aspect-ratio: 1; border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.55); border: 3px solid #fff; }
+.scan-frame::after { content: ""; position: absolute; left: 8%; right: 8%; height: 2px; background: #6b9bff; top: 50%; animation: scanline 1.6s ease-in-out infinite alternate; }
+@keyframes scanline { from { top: 10%; } to { top: 90%; } }
+.scan-tip { position: relative; color: #fff; font: 500 15px var(--f-body); margin: 20px 16px 0; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.scan-close { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); background: #fff; color: #18202e; border: 0; font: 700 16px var(--f-body); padding: 12px 32px; border-radius: 999px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .scan-frame::after { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="app-bar">
+      <h1>로또 <span>6/45</span> 번호 추첨기</h1>
+      <button class="install" type="button" id="installBtn" hidden>앱 설치</button>
+    </div>
+    <p id="dataRange">역대 당첨번호를 바탕으로 번호마다 확률을 매겨 뽑아요.</p>
+  </header>
+
+  <section class="card latest">
+    <div class="row">
+      <h2 id="latestTitle">최신 회차</h2>
+      <span class="sub num" id="latestDate"></span>
+    </div>
+    <div class="balls" id="latestBalls"></div>
+    <p class="sub" id="latestPrize"></p>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <span class="label">추첨 방식</span>
+      <div class="seg" id="method" role="group" aria-label="추첨 방식">
+        <button type="button" data-v="hot" aria-pressed="true">많이 나온 번호</button>
+        <button type="button" data-v="cold">적게 나온 번호</button>
+        <button type="button" data-v="even">균등</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">분석 범위</span>
+      <div class="seg" id="win" role="group" aria-label="분석 범위">
+        <button type="button" data-v="0" aria-pressed="true">전체</button>
+        <button type="button" data-v="100">최근 100회</button>
+        <button type="button" data-v="30">최근 30회</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">게임 수</span>
+      <div class="seg" id="count" role="group" aria-label="게임 수">
+        <button type="button" data-v="1">1</button>
+        <button type="button" data-v="2">2</button>
+        <button type="button" data-v="3">3</button>
+        <button type="button" data-v="4">4</button>
+        <button type="button" data-v="5" aria-pressed="true">5</button>
+      </div>
+    </div>
+    <label class="check" for="useBonus"><input type="checkbox" id="useBonus" checked> 2등 보너스 번호도 출현 횟수에 포함</label>
+    <p class="explain" id="explain"></p>
+
+    <details class="opts" id="opts">
+      <summary>번호별 출현 횟수 · 고정수 · 제외수 <span id="optSummary"></span></summary>
+      <div class="opts-body">
+        <div class="row">
+          <div class="legend"><span>적게</span><i></i><span>많이 나옴</span></div>
+          <button class="link" type="button" id="clearOpts">고정·제외 모두 해제</button>
+        </div>
+        <div class="grid" id="grid"></div>
+        <div class="mode">
+          <span>한 번 누르면 <b>고정</b> (최대 5개)</span>
+          <span>두 번 누르면 <i>제외</i></span>
+          <span>세 번 누르면 해제</span>
+        </div>
+        <p class="sub" id="poolHint"></p>
+      </div>
+    </details>
+
+    <button class="go" type="button" id="go">번호 뽑기</button>
+  </section>
+
+  <section class="slip" aria-live="polite">
+    <div class="slip-head">
+      <span class="label" id="slipTitle">예시 · 5게임</span>
+      <button class="copy" type="button" id="copy">번호 복사</button>
+    </div>
+    <div id="games"></div>
+  </section>
+
+  <section class="card" id="checker">
+    <div class="row">
+      <h2>내 번호 확인 · 확률 검사</h2>
+      <span class="sub">용지 QR이나 번호 6개로 확인해요</span>
+    </div>
+    <div class="qr-bar">
+      <input class="vh" type="file" id="qrCam" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+      <button class="qr-btn" type="button" id="scanBtn" style="border:0">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2zM16 16h2v2h-2z"/></svg>
+        카메라로 QR 스캔
+      </button>
+      <input class="vh" type="file" id="qrFile" accept="image/*">
+      <label class="qr-btn alt" for="qrFile">QR 사진 고르기</label>
+    </div>
+    <p class="sub" id="qrMsg">용지 오른쪽 위 QR코드에 카메라를 비추면 바로 확인해요. QR 주소를 복사해 아래 칸에 붙여 넣어도 돼요.</p>
+    <div id="tickets"></div>
+    <div class="ck-form">
+      <div class="ck-field">
+        <label class="label" for="myNums">내 번호</label>
+        <input id="myNums" autocomplete="off" placeholder="3 11 19 25 33 42 또는 QR 주소">
+      </div>
+      <div class="ck-field ck-round">
+        <label class="label" for="roundSel">확인할 회차</label>
+        <select id="roundSel"></select>
+      </div>
+      <button class="ck-go" type="button" id="ckGo">확인하기</button>
+    </div>
+    <div class="row ck-quick">
+      <span class="sub">위에서 뽑은 번호 불러오기</span>
+      <div class="seg" id="ckFill"></div>
+    </div>
+    <p class="ck-err" id="ckErr" hidden></p>
+    <div id="ckOut" hidden>
+      <div class="ck-block">
+        <span class="label" id="ckRoundTitle"></span>
+        <div class="ck-compare">
+          <div><span class="sub">당첨번호</span><div class="balls" id="ckWin"></div></div>
+          <div><span class="sub">내 번호</span><div class="balls" id="ckMine"></div></div>
+        </div>
+        <p class="ck-rank" id="ckRank"></p>
+      </div>
+      <div class="ck-block">
+        <span class="label">역대 전 회차 대조</span>
+        <div class="ranks" id="ckHist"></div>
+        <p class="sub" id="ckHistNote"></p>
+      </div>
+      <div class="ck-block">
+        <span class="label">확률 검사</span>
+        <div class="tbl-wrap"><table class="tbl" id="ckProb"></table></div>
+        <p class="sub" id="ckProbNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <h2>번호별 출현 횟수</h2>
+      <span class="sub" id="statScope"></span>
+    </div>
+    <div class="tops">
+      <div><span class="label">많이 나온 번호</span><ol class="toplist" id="topHot"></ol></div>
+      <div><span class="label">적게 나온 번호</span><ol class="toplist" id="topCold"></ol></div>
+    </div>
+  </section>
+
+  <section class="card hist" id="hist" hidden>
+    <h2>최근 뽑은 번호</h2>
+    <ol id="histList"></ol>
+  </section>
+
+  <p class="foot">추첨은 매번 독립이라 과거 출현 횟수가 다음 결과에 영향을 주지는 않아요. 어떤 방식이든 1등 확률은 1/8,145,060입니다.</p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<div class="scan" id="scan" hidden role="dialog" aria-label="QR 스캔">
+  <video id="scanVideo" playsinline muted></video>
+  <div class="scan-frame"></div>
+  <p class="scan-tip" id="scanTip">용지의 QR코드를 네모 안에 맞춰 주세요</p>
+  <button class="scan-close" id="scanClose" type="button">닫기</button>
+</div>
+<script src="vendor/jsQR.js" defer></script>
+<script>
+// [회차, 추첨일, 번호1~6, 보너스, 1등 1인당 당첨금, 1등 당첨자 수]
+(async () => {
+  let DRAWS;
+  try {
+    const res = await fetch("data/draws.json", { cache: "no-cache" });
+    DRAWS = (await res.json()).draws;
+  } catch (e) {
+    document.getElementById("dataRange").textContent = "당첨번호 데이터를 불러오지 못했어요. 인터넷에 연결한 뒤 다시 열어 주세요.";
+    return;
+  }
+  const $ = (s) => document.querySelector(s);
+  const LETTERS = "ABCDE";
+  const opt = { method: "hot", win: 0, count: 5, bonus: true };
+  const state = new Map(); // n -> "fix" | "ex"
+  let current = [], history = [], weights = [], counts = [];
+
+  try { history = JSON.parse(localStorage.getItem("lotto-history") || "[]"); } catch (e) { history = []; }
+
+  const first = DRAWS[0], last = DRAWS[DRAWS.length - 1];
+  const fmtDate = (s) => s.replaceAll("-", ".");
+  $("#dataRange").textContent = `1회(${fmtDate(first[1])})부터 ${last[0]}회(${fmtDate(last[1])})까지 1등·2등 당첨번호 ${DRAWS.length.toLocaleString()}회분으로 번호마다 확률을 매겨 뽑아요. 당첨번호는 매주 자동으로 업데이트돼요.`;
+
+  const rand = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] / 4294967296; };
+  const range = (n) => n <= 10 ? 1 : n <= 20 ? 2 : n <= 30 ? 3 : n <= 40 ? 4 : 5;
+  const ball = (n, cls = "") => `<span class="ball r${range(n)} ${cls}">${n}</span>`;
+  const fixed = () => [...state].filter(([, v]) => v === "fix").map(([k]) => k);
+  const excluded = () => [...state].filter(([, v]) => v === "ex").map(([k]) => k);
+  const won = (v) => v >= 1e8 ? (v / 1e8).toFixed(1).replace(/\.0$/, "") + "억 원" : Math.round(v / 1e4).toLocaleString() + "만 원";
+
+  // 최신 회차
+  $("#latestTitle").textContent = `${last[0]}회 당첨번호`;
+  $("#latestDate").textContent = fmtDate(last[1]) + " 추첨";
+  $("#latestBalls").innerHTML = last.slice(2, 8).map((n) => ball(n)).join("") + `<span class="plus">+</span>` + ball(last[8]);
+  $("#latestPrize").textContent = last[10] ? `1등 ${last[10]}명 · 1인당 ${won(last[9])}` : "1등 당첨자 없음";
+
+  // 출현 횟수 → 가중치
+  function recompute() {
+    const src = opt.win ? DRAWS.slice(-opt.win) : DRAWS;
+    counts = Array(46).fill(0);
+    for (const d of src) {
+      for (let k = 2; k < 8; k++) counts[d[k]]++;
+      if (opt.bonus) counts[d[8]]++;
+    }
+    weights = counts.map((c, i) => {
+      if (i === 0) return 0;
+      if (opt.method === "even") return 1;
+      return opt.method === "hot" ? c + 1 : 1 / (c + 1);
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+    const probs = weights.map((w) => w / total);
+    const scope = opt.win ? `최근 ${opt.win}회` : `전체 ${DRAWS.length.toLocaleString()}회`;
+    const kind = opt.bonus ? "1등 번호 6개 + 2등 보너스 번호" : "1등 번호 6개";
+    const max = Math.max(...probs.slice(1)), min = Math.min(...probs.slice(1));
+    const explain = {
+      hot: `<b>${scope}</b> 동안 ${kind}로 나온 횟수에 비례해 확률을 매겨요. 가장 높은 번호는 <b>${(max * 100).toFixed(2)}%</b>, 가장 낮은 번호는 <b>${(min * 100).toFixed(2)}%</b> 확률로 첫 번째 공에 뽑혀요.`,
+      cold: `<b>${scope}</b> 동안 적게 나온 번호일수록 확률이 높아요(출현 횟수의 역수). 가장 높은 번호는 <b>${(max * 100).toFixed(2)}%</b>, 가장 낮은 번호는 <b>${(min * 100).toFixed(2)}%</b>예요.`,
+      even: `모든 번호가 <b>${(100 / 45).toFixed(2)}%</b>로 같은 확률이에요. 실제 추첨기와 같은 방식입니다.`
+    }[opt.method];
+    $("#explain").innerHTML = explain;
+    $("#statScope").textContent = scope + (opt.bonus ? " · 보너스 포함" : "");
+    renderGrid(); renderTops(scope);
+  }
+
+  function weightedDraw() {
+    const f = fixed(), ex = new Set(excluded());
+    const pool = [];
+    for (let i = 1; i <= 45; i++) if (!ex.has(i) && !f.includes(i)) pool.push(i);
+    const pick = [...f];
+    while (pick.length < 6) {
+      const total = pool.reduce((a, n) => a + weights[n], 0);
+      let r = rand() * total, idx = 0;
+      for (; idx < pool.length - 1; idx++) { r -= weights[pool[idx]]; if (r < 0) break; }
+      pick.push(pool.splice(idx, 1)[0]);
+    }
+    return pick.sort((a, b) => a - b);
+  }
+
+  // 역대 회차와 맞춰 보기
+  function checkHistory(g) {
+    const set = new Set(g), r = [0, 0, 0, 0, 0, 0];
+    let best = null;
+    for (const d of DRAWS) {
+      let m = 0;
+      for (let k = 2; k < 8; k++) if (set.has(d[k])) m++;
+      let rank = 0;
+      if (m === 6) rank = 1; else if (m === 5 && set.has(d[8])) rank = 2; else if (m === 5) rank = 3; else if (m === 4) rank = 4; else if (m === 3) rank = 5;
+      if (rank) { r[rank]++; if (!best || rank < best[0]) best = [rank, d[0]]; }
+    }
+    return { r, best };
+  }
+
+  // 번호 그리드
+  const grid = $("#grid");
+  for (let i = 1; i <= 45; i++) {
+    const b = document.createElement("button");
+    b.type = "button"; b.id = "n" + i;
+    b.addEventListener("click", () => {
+      const s = state.get(i);
+      if (!s) { if (fixed().length >= 5) return toast("고정수는 5개까지 고를 수 있어요"); state.set(i, "fix"); }
+      else if (s === "fix") { if (45 - excluded().length - 1 < 6) return toast("최소 6개 번호는 남겨야 해요"); state.set(i, "ex"); }
+      else state.delete(i);
+      renderGrid();
+    });
+    grid.appendChild(b);
+  }
+  function renderGrid() {
+    const vals = counts.slice(1), lo = Math.min(...vals), hi = Math.max(...vals);
+    for (let i = 1; i <= 45; i++) {
+      const b = document.getElementById("n" + i), s = state.get(i);
+      b.className = s || "";
+      b.style.setProperty("--h", hi > lo ? ((counts[i] - lo) / (hi - lo)).toFixed(2) : 0);
+      b.innerHTML = `${i}<small>${counts[i]}</small>`;
+      b.setAttribute("aria-label", `${i}번, ${counts[i]}회 출현` + (s === "fix" ? ", 고정" : s === "ex" ? ", 제외" : ""));
+    }
+    const f = fixed().length, e = excluded().length;
+    $("#optSummary").textContent = f || e ? `(고정 ${f} · 제외 ${e})` : "";
+    $("#poolHint").textContent = `칸 아래 작은 숫자가 출현 횟수예요. 추첨 대상 ${45 - e - f}개 번호에서 ${6 - f}개를 뽑아요.`;
+  }
+  $("#clearOpts").addEventListener("click", () => { state.clear(); renderGrid(); });
+
+  function renderTops(scope) {
+    const rounds = opt.win || DRAWS.length;
+    const order = Array.from({ length: 45 }, (_, i) => i + 1).sort((a, b) => counts[b] - counts[a] || a - b);
+    const hi = counts[order[0]];
+    const item = (n) => `<li>${ball(n, "sm")}<div class="bar"><span style="width:${(counts[n] / hi * 100).toFixed(1)}%"></span></div><span class="num">${counts[n]}회 · ${(counts[n] / rounds * 100).toFixed(1)}%</span></li>`;
+    $("#topHot").innerHTML = order.slice(0, 6).map(item).join("");
+    $("#topCold").innerHTML = order.slice(-6).reverse().map(item).join("");
+  }
+
+  function renderGames(games, animate) {
+    const box = $("#games"); box.innerHTML = "";
+    games.forEach((g, gi) => {
+      const row = document.createElement("div"); row.className = "game";
+      const sum = g.reduce((a, b) => a + b, 0), odd = g.filter((n) => n % 2).length;
+      const { r, best } = checkHistory(g);
+      const parts = [1, 2, 3, 4, 5].filter((k) => r[k]).map((k) => (k <= 2 ? `<b>${k}등 ${r[k]}회</b>` : `${k}등 ${r[k]}회`));
+      const line = parts.length ? `역대 대조: ${parts.join(" · ")}` + (best && best[0] <= 3 ? ` (최고 ${best[0]}등, ${best[1]}회)` : "") : "역대 대조: 5등 이상 당첨 이력 없음";
+      row.innerHTML = `<div class="game-top"><span class="tag">${LETTERS[gi]}</span><div class="balls"></div><span class="meta">합 ${sum}<br>홀${odd}:짝${6 - odd}</span></div><div class="check-line">${line}</div>`;
+      const balls = row.querySelector(".balls");
+      g.forEach((n, i) => {
+        const el = document.createElement("span");
+        el.className = `ball r${range(n)}` + (animate ? " pop" : "");
+        if (animate) el.style.animationDelay = (gi * 6 + i) * 70 + "ms";
+        el.textContent = n;
+        balls.appendChild(el);
+      });
+      box.appendChild(row);
+    });
+  }
+
+  function renderHistory() {
+    $("#hist").hidden = history.length === 0;
+    $("#histList").innerHTML = history.slice(0, 10).map((h) =>
+      `<li><span>${h.t}</span><span class="n">${h.g.map((n) => String(n).padStart(2, "0")).join(" ")}</span></li>`).join("");
+  }
+
+  // 컨트롤
+  function seg(id, key, cast) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      opt[key] = cast(b.dataset.v);
+      $(id).querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+      if (key !== "count") recompute();
+    });
+  }
+  seg("#method", "method", String); seg("#win", "win", Number); seg("#count", "count", Number);
+  $("#useBonus").addEventListener("change", (e) => { opt.bonus = e.target.checked; recompute(); });
+
+  const methodName = { hot: "많이 나온 번호", cold: "적게 나온 번호", even: "균등" };
+  $("#go").addEventListener("click", () => {
+    const go = $("#go"); go.disabled = true;
+    current = Array.from({ length: opt.count }, weightedDraw);
+    renderGames(current, true);
+    renderFill();
+    $("#slipTitle").textContent = `${methodName[opt.method]} · ${opt.count}게임 · ${(opt.count * 1000).toLocaleString()}원`;
+    const d = new Date(), t = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    history = [...current.map((g) => ({ t, g })), ...history].slice(0, 30);
+    try { localStorage.setItem("lotto-history", JSON.stringify(history)); } catch (e) {}
+    renderHistory();
+    setTimeout(() => (go.disabled = false), Math.min(opt.count * 6 * 70 + 300, 2400));
+  });
+
+  $("#copy").addEventListener("click", async () => {
+    const text = current.map((g, i) => `${LETTERS[i]}: ${g.join(", ")}`).join("\n");
+    try { await navigator.clipboard.writeText(text); toast("번호를 복사했어요"); }
+    catch (e) {
+      const r = document.createRange(); r.selectNodeContents($("#games"));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      toast("번호를 선택했어요. 복사해서 쓰세요");
+    }
+  });
+
+  let tt;
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 1800); }
+
+  // ── 내 번호 확인 · 확률 검사 ──
+  const sel = $("#roundSel");
+  sel.innerHTML = DRAWS.slice().reverse().map((d) => `<option value="${d[0]}">${d[0]}회</option>`).join("");
+  const byRound = new Map(DRAWS.map((d) => [d[0], d]));
+  const C = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
+  const TOTAL = C(45, 6);
+  const THEORY = { 1: 1 / TOTAL, 2: 6 / TOTAL, 3: (C(6, 5) * 38) / TOTAL, 4: (C(6, 4) * C(39, 2)) / TOTAL, 5: (C(6, 3) * C(39, 3)) / TOTAL };
+  const oneIn = (p) => "1/" + Math.round(1 / p).toLocaleString();
+
+  function renderFill() {
+    $("#ckFill").innerHTML = current.map((_, i) => `<button type="button" data-i="${i}">${LETTERS[i]}</button>`).join("");
+  }
+  $("#ckFill").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("#myNums").value = current[+b.dataset.i].join(" ");
+    runCheck();
+  });
+  $("#ckGo").addEventListener("click", runCheck);
+  $("#myNums").addEventListener("keydown", (e) => { if (e.key === "Enter") runCheck(); });
+  sel.addEventListener("change", () => { if (!$("#ckOut").hidden) runCheck(); });
+
+  function parseNums(s) {
+    const nums = (s.match(/\d+/g) || []).map(Number);
+    if (nums.length !== 6) return { err: `번호를 6개 넣어 주세요. 지금 ${nums.length}개예요.` };
+    if (nums.some((n) => n < 1 || n > 45)) return { err: "번호는 1부터 45 사이여야 해요." };
+    if (new Set(nums).size !== 6) return { err: "같은 번호가 두 번 들어갔어요." };
+    return { nums: nums.sort((a, b) => a - b) };
+  }
+
+  function rankOf(set, d) {
+    let m = 0; for (let k = 2; k < 8; k++) if (set.has(d[k])) m++;
+    const bonus = set.has(d[8]);
+    const rank = m === 6 ? 1 : m === 5 && bonus ? 2 : m === 5 ? 3 : m === 4 ? 4 : m === 3 ? 5 : 0;
+    return { m, bonus, rank };
+  }
+
+  // ── 용지 QR ──
+  // 용지 QR: ...?v=회차4자리 + [글자1][숫자12]×게임 수 + 일련번호
+  function parseQr(text) {
+    const m = text.match(/[?&]v=([^&\s]+)/);
+    const payload = (m ? m[1] : text).trim();
+    const dm = payload.match(/^(\d{4})[A-Za-z]\d{12}/);
+    if (!dm) return null;
+    const games = [];
+    for (const g of payload.slice(4).matchAll(/[A-Za-z](\d{12})/g)) {
+      const nums = []; for (let i = 0; i < 12; i += 2) nums.push(+g[1].slice(i, i + 2));
+      if (new Set(nums).size !== 6 || nums.some((n) => n < 1 || n > 45)) return null;
+      games.push(nums.sort((a, b) => a - b));
+    }
+    if (games.length < 1 || games.length > 5) return null;
+    return { round: +dm[1], games };
+  }
+  const looksLikeQr = (s) => /v=\d{4}[A-Za-z]/.test(s) || /^\s*\d{4}[A-Za-z]\d{12}/.test(s);
+
+  let tickets = [], freshKey = "";
+  try { tickets = JSON.parse(localStorage.getItem("lotto-tickets") || "[]"); } catch (e) { tickets = []; }
+  const tKey = (t) => t.round + ":" + t.games.map((g) => g.join(",")).join("|");
+  const saveTickets = () => { try { localStorage.setItem("lotto-tickets", JSON.stringify(tickets)); } catch (e) {} };
+  const drawDateOf = (round) => {
+    const dt = new Date(last[1] + "T12:00:00"); dt.setDate(dt.getDate() + 7 * (round - last[0]));
+    return `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, "0")}.${String(dt.getDate()).padStart(2, "0")}`;
+  };
+
+  function addTicket(t) {
+    const k = tKey(t);
+    tickets = [t, ...tickets.filter((x) => tKey(x) !== k)].slice(0, 20);
+    freshKey = k; saveTickets(); renderTickets();
+    const el = document.querySelector(".ticket.fresh");
+    if (el) el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" });
+  }
+
+  function renderTickets() {
+    const box = $("#tickets");
+    box.innerHTML = tickets.map((t, ti) => {
+      const d = byRound.get(t.round), k = tKey(t);
+      const head = (sum, cls = "") => `<div class="t-head"><div><b>${t.round}회 용지</b> <span class="sub">${d ? fmtDate(d[1]) : drawDateOf(t.round)} 추첨 · ${t.games.length}게임</span></div><span class="t-sum ${cls}">${sum}</span><button class="t-del" type="button" data-i="${ti}" aria-label="${t.round}회 용지 삭제">삭제</button></div>`;
+      if (!d) {
+        const games = t.games.map((g, gi) => `<div class="t-game"><span class="tag">${LETTERS[gi]}</span><div class="balls">${g.map((n) => ball(n, "sm")).join("")}</div><span class="t-res">추첨 전</span></div>`).join("");
+        const note = t.round > last[0]
+          ? `${drawDateOf(t.round)} 추첨 후 당첨번호가 업데이트되면 페이지를 열 때 자동으로 확인해요.`
+          : `${t.round}회 당첨번호가 아직 데이터에 없어요.`;
+        return `<div class="ticket ${k === freshKey ? "fresh" : ""}">${head("추첨 전")}${games}<p class="t-pending">${note}</p></div>`;
+      }
+      const win = new Set(d.slice(2, 8));
+      const res = t.games.map((g) => rankOf(new Set(g), d));
+      const hits = res.filter((r) => r.rank);
+      const sum = hits.length ? hits.map((r) => r.rank).sort().map((r) => `${r}등`).join(" · ") + " 당첨" : "낙첨";
+      const winRow = `<div class="t-win"><span class="sub">당첨</span>${d.slice(2, 8).map((n) => ball(n, "sm")).join("")}<span class="plus">+</span>${ball(d[8], "sm")}</div>`;
+      const games = t.games.map((g, gi) => {
+        const r = res[gi];
+        const balls = g.map((n) => ball(n, "sm" + (win.has(n) ? "" : r.rank === 2 && n === d[8] ? " bon" : " dim"))).join("");
+        const label = r.rank ? `${r.rank}등` + (r.rank === 1 && d[10] ? ` ${won(d[9])}` : r.rank === 4 ? " 5만 원" : r.rank === 5 ? " 5천 원" : "") : `낙첨 ${r.m}개`;
+        return `<div class="t-game"><span class="tag">${LETTERS[gi]}</span><div class="balls">${balls}</div><span class="t-res ${r.rank ? "hit" : ""}">${label}</span></div>`;
+      }).join("");
+      return `<div class="ticket ${k === freshKey ? "fresh" : ""}">${head(sum, hits.length ? "hit" : "")}${winRow}${games}</div>`;
+    }).join("");
+  }
+  $("#tickets").addEventListener("click", (e) => {
+    const b = e.target.closest(".t-del"); if (!b) return;
+    tickets.splice(+b.dataset.i, 1); saveTickets(); renderTickets(); toast("용지를 삭제했어요");
+  });
+
+  function qrMsg(text, isErr) { const m = $("#qrMsg"); m.textContent = text; m.classList.toggle("err", !!isErr); }
+  function handleQrText(text) {
+    const t = parseQr(text);
+    if (!t) { qrMsg("QR은 읽었지만 로또 6/45 용지 QR이 아니에요. 용지의 QR코드를 찍어 주세요.", true); return false; }
+    addTicket({ round: t.round, games: t.games });
+    qrMsg(byRound.has(t.round) ? `${t.round}회 용지를 확인하고 저장했어요.` : `${t.round}회 용지를 저장했어요. 추첨 후 자동으로 확인해요.`);
+    return true;
+  }
+
+  async function decodeQr(file) {
+    const bmp = await createImageBitmap(file);
+    if ("BarcodeDetector" in window) {
+      try {
+        const found = await new BarcodeDetector({ formats: ["qr_code"] }).detect(bmp);
+        if (found.length) return found[0].rawValue;
+      } catch (e) {}
+    }
+    if (!window.jsQR) throw new Error("nolib");
+    const longSide = Math.max(bmp.width, bmp.height);
+    const sizes = [1000, 1600, 2400].filter((s) => s < longSide).concat(Math.min(longSide, 4000));
+    const cv = document.createElement("canvas"), ctx = cv.getContext("2d", { willReadFrequently: true });
+    for (const s of sizes) {
+      const k = s / longSide;
+      cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+      ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const img = ctx.getImageData(0, 0, cv.width, cv.height);
+      const r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" });
+      if (r && r.data) return r.data;
+      await new Promise((ok) => setTimeout(ok, 0));
+    }
+    return null;
+  }
+  async function onQrFile(e) {
+    const file = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!file) return;
+    const bar = $(".qr-bar"); bar.classList.add("qr-busy"); qrMsg("QR코드를 읽는 중이에요…");
+    try {
+      const text = await decodeQr(file);
+      if (!text) qrMsg("사진에서 QR코드를 찾지 못했어요. QR이 화면 가운데에 크고 선명하게 나오도록 다시 찍어 주세요.", true);
+      else handleQrText(text);
+    } catch (err) {
+      qrMsg(err.message === "nolib" ? "QR 읽기 도구를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요." : "사진을 열지 못했어요. 다른 사진으로 시도해 주세요.", true);
+    } finally { bar.classList.remove("qr-busy"); }
+  }
+  $("#qrCam").addEventListener("change", onQrFile);
+  $("#qrFile").addEventListener("change", onQrFile);
+
+  function runCheck() {
+    if (looksLikeQr($("#myNums").value)) {
+      if (handleQrText($("#myNums").value)) $("#myNums").value = "";
+      return;
+    }
+    const { nums, err } = parseNums($("#myNums").value);
+    $("#ckErr").hidden = !err; $("#ckErr").textContent = err || "";
+    if (err) { $("#ckOut").hidden = true; return; }
+    $("#myNums").value = nums.join(" ");
+    const set = new Set(nums);
+
+    // 1) 선택 회차 당첨 확인
+    const d = byRound.get(+sel.value);
+    const win = new Set(d.slice(2, 8));
+    const { m, bonus, rank } = rankOf(set, d);
+    $("#ckRoundTitle").textContent = `${d[0]}회 (${fmtDate(d[1])}) 당첨 확인`;
+    $("#ckWin").innerHTML = d.slice(2, 8).map((n) => ball(n, "sm" + (set.has(n) ? "" : " dim"))).join("") + `<span class="plus">+</span>` + ball(d[8], "sm" + (set.has(d[8]) ? "" : " dim"));
+    $("#ckMine").innerHTML = nums.map((n) => ball(n, "sm" + (win.has(n) ? "" : n === d[8] && rank === 2 ? " bon" : " dim"))).join("");
+    const rk = $("#ckRank");
+    rk.className = "ck-rank" + (rank ? " hit" : "");
+    const extra = rank === 1 && d[10] ? ` · 1인당 ${won(d[9])}` : "";
+    rk.innerHTML = rank ? `${rank}등 당첨!<small>${m}개 일치${rank === 2 ? " + 보너스" : ""}${extra}</small>` : `낙첨<small>${m}개 일치${bonus ? " (보너스 일치)" : ""}</small>`;
+
+    // 2) 역대 전 회차 대조
+    const r = [0, 0, 0, 0, 0, 0], best = {};
+    for (const x of DRAWS) { const o = rankOf(set, x); if (o.rank) { r[o.rank]++; (best[o.rank] ||= []).push(x[0]); } }
+    $("#ckHist").innerHTML = [1, 2, 3, 4, 5].map((k) => `<div class="${r[k] ? "on" : ""}"><b>${r[k]}</b><span>${k}등</span></div>`).join("");
+    const top = [1, 2, 3].find((k) => r[k]);
+    const spent = DRAWS.length * 1000;
+    $("#ckHistNote").textContent = (top ? `${top}등 해당 회차: ${best[top].slice(-5).join(", ")}회. ` : "3등 이상에 해당한 회차는 없어요. ")
+      + `1회부터 매주 이 번호를 샀다면 ${DRAWS.length.toLocaleString()}회 동안 ${(spent / 1e4).toLocaleString()}만 원을 썼을 거예요.`;
+
+    // 3) 확률 검사
+    const rounds = opt.win || DRAWS.length;
+    const scope = opt.win ? `최근 ${opt.win}회` : "전체";
+    const score = nums.reduce((a, n) => a + counts[n], 0);
+    let below = 0; const N = 20000, base = Array.from({ length: 45 }, (_, i) => i + 1);
+    for (let t = 0; t < N; t++) {
+      const p = base.slice(); let s = 0;
+      for (let k = 0; k < 6; k++) { const j = k + Math.floor(rand() * (45 - k)); [p[k], p[j]] = [p[j], p[k]]; s += counts[p[k]]; }
+      if (s < score) below++;
+    }
+    const pct = Math.round(below / N * 100);
+    const sum = nums.reduce((a, b) => a + b, 0), odd = nums.filter((n) => n % 2).length;
+    const consec = nums.some((n, i) => i && n - nums[i - 1] === 1);
+    let sumNear = 0, oddSame = 0, consecSame = 0;
+    for (const x of DRAWS) {
+      const g = x.slice(2, 8), s = g.reduce((a, b) => a + b, 0);
+      if (Math.abs(s - sum) <= 10) sumNear++;
+      if (g.filter((n) => n % 2).length === odd) oddSame++;
+      if (g.some((n, i) => i && n - g[i - 1] === 1) === consec) consecSame++;
+    }
+    const share = (c) => (c / DRAWS.length * 100).toFixed(1) + "%";
+    const tag = pct >= 70 ? `<span class="pill hi">많이 나온 편</span>` : pct <= 30 ? `<span class="pill lo">적게 나온 편</span>` : `<span class="pill">보통</span>`;
+    const perNum = nums.map((n) => `${n}번 ${counts[n]}회`).join(", ");
+    $("#ckProb").innerHTML = `
+      <tr><th>1등 확률</th><td><span class="num">1/8,145,060</span> · 어떤 조합이든 같아요</td></tr>
+      <tr><th>등수별 이론 확률</th><td>2등 ${oneIn(THEORY[2])} · 3등 ${oneIn(THEORY[3])} · 4등 ${oneIn(THEORY[4])} · 5등 ${oneIn(THEORY[5])}</td></tr>
+      <tr><th>번호별 출현 (${scope})</th><td>${perNum}</td></tr>
+      <tr><th>출현 점수</th><td><span class="num">${score}</span>회 · 무작위 조합 2만 개 중 상위 <span class="num">${100 - pct}%</span>${tag}</td></tr>
+      <tr><th>번호 합계 ${sum}</th><td>역대 당첨번호 중 합계 ${sum - 10}~${sum + 10}: <span class="num">${share(sumNear)}</span></td></tr>
+      <tr><th>홀짝 ${odd}:${6 - odd}</th><td>역대 당첨번호 중 같은 비율: <span class="num">${share(oddSame)}</span></td></tr>
+      <tr><th>연속번호 ${consec ? "있음" : "없음"}</th><td>역대 당첨번호 중 연속번호 ${consec ? "있음" : "없음"}: <span class="num">${share(consecSame)}</span></td></tr>`;
+    $("#ckProbNote").textContent = `출현 점수는 6개 번호의 ${scope} 출현 횟수(${opt.bonus ? "보너스 포함" : "보너스 제외"}) 합이에요. 위쪽 분석 범위 설정을 따라요. 합계·홀짝·연속번호는 실제 당첨 조합에서 흔한 모양인지 보여줄 뿐 당첨 확률을 바꾸지는 않아요.`;
+    $("#ckOut").hidden = false;
+  }
+
+  // ── 카메라 실시간 QR 스캔 ──
+  let stream = null, scanning = false, detector = null;
+  const cv2 = document.createElement("canvas"), ctx2 = cv2.getContext("2d", { willReadFrequently: true });
+  async function startScan() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $("#qrCam").click(); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (e) {
+      qrMsg("카메라를 쓸 수 없어요. 휴대폰 설정에서 카메라 권한을 허용하거나 [QR 사진 고르기]를 이용해 주세요.", true);
+      return;
+    }
+    const v = $("#scanVideo");
+    $("#scan").hidden = false; $("#scanTip").textContent = "용지의 QR코드를 네모 안에 맞춰 주세요";
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) {}
+    if (!detector && "BarcodeDetector" in window) {
+      try { const f = await BarcodeDetector.getSupportedFormats(); if (f.includes("qr_code")) detector = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) {}
+    }
+    scanning = true; scanLoop();
+  }
+  function stopScan() {
+    scanning = false;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null; $("#scanVideo").srcObject = null; $("#scan").hidden = true;
+  }
+  async function scanLoop() {
+    if (!scanning) return;
+    const v = $("#scanVideo");
+    let text = null;
+    if (v.videoWidth) {
+      if (detector) {
+        try { const r = await detector.detect(v); if (r.length) text = r[0].rawValue; } catch (e) {}
+      } else if (window.jsQR) {
+        const side = Math.min(v.videoWidth, v.videoHeight) * 0.85, sx = (v.videoWidth - side) / 2, sy = (v.videoHeight - side) / 2;
+        cv2.width = cv2.height = 720;
+        ctx2.drawImage(v, sx, sy, side, side, 0, 0, 720, 720);
+        const img = ctx2.getImageData(0, 0, 720, 720);
+        const r = window.jsQR(img.data, 720, 720, { inversionAttempts: "dontInvert" });
+        if (r && r.data) text = r.data;
+      }
+    }
+    if (text && scanning) {
+      if (parseQr(text)) { stopScan(); if (navigator.vibrate) navigator.vibrate(80); handleQrText(text); return; }
+      $("#scanTip").textContent = "로또 6/45 용지 QR이 아니에요. 용지 오른쪽 위 QR을 비춰 주세요.";
+    }
+    setTimeout(scanLoop, 120);
+  }
+  $("#scanBtn").addEventListener("click", startScan);
+  $("#scanClose").addEventListener("click", stopScan);
+  document.addEventListener("visibilitychange", () => { if (document.hidden && scanning) stopScan(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && scanning) stopScan(); });
+
+  // ── 앱 설치 ──
+  let installEvt = null;
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("#installBtn").hidden = false; });
+  $("#installBtn").addEventListener("click", async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch (e) {}
+    installEvt = null; $("#installBtn").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { $("#installBtn").hidden = true; toast("앱을 설치했어요"); });
+
+  recompute();
+  current = Array.from({ length: 5 }, weightedDraw);
+  renderGames(current, false);
+  renderFill();
+  renderTickets();
+  renderHistory();
+})();
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+</script>
+</body>
+</html>

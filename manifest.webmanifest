@@ -1,0 +1,17 @@
+{
+  "name": "로또 6/45 번호 추첨기",
+  "short_name": "로또추첨기",
+  "description": "역대 당첨번호로 확률을 매겨 번호를 뽑고, 용지 QR로 당첨을 확인해요.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef1f6",
+  "theme_color": "#18202e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
