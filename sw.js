@@ -1,5 +1,5 @@
 // 앱 화면은 저장해 두고(오프라인 가능), 당첨번호 데이터는 항상 새로 받아요.
-const CACHE = "lotto645-v1";
+const CACHE = "lotto645-v2";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "vendor/jsQR.js", "data/draws.json",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/favicon.png", "icons/apple-touch-icon.png"];
 
